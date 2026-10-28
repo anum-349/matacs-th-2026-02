@@ -1,0 +1,37 @@
+[
+    {
+        "proposal": "A",
+        "rank": 1,
+        "status": "ranked",
+        "score": 75.6,
+        "reason": "Passes all checks; strongest experience, full team marks, 12-week schedule, mid-range price."
+    },
+    {
+        "proposal": "E",
+        "rank": 2,
+        "status": "ranked",
+        "score": 62.5,
+        "reason": "Passes all checks; solid on every criterion but fewer installs, slower and pricier than A."
+    },
+    {
+        "proposal": "D",
+        "rank": null,
+        "status": "flagged",
+        "score": null,
+        "reason": "No completion time is stated, so the 16-week limit cannot be verified; provisional score 61.9 with the best price, ask the bidder for a schedule."
+    },
+    {
+        "proposal": "C",
+        "rank": null,
+        "status": "flagged",
+        "score": null,
+        "reason": "Contains text aimed at automated reviewers (ignored, not scored); also states no safety or monitoring plan; provisional score 53.4, a human decides on disqualification."
+    },
+    {
+        "proposal": "B",
+        "rank": null,
+        "status": "ineligible",
+        "score": null,
+        "reason": "Fails the mandatory licence rule: the electrical work goes to a subcontractor to be confirmed after award, so the bidder does not hold the licence; its low price is irrelevant."
+    }
+]
