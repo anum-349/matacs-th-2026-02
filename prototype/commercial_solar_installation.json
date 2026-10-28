@@ -1,0 +1,73 @@
+{
+  "category": "Commercial Solar Installation",
+  "version": 2,
+  "close_call_gap": 2.0,
+  "extraction_fields": [
+    {"key": "bidder_name", "type": "string",
+     "definition": "the company submitting the proposal."},
+    {"key": "licence_held_by_bidder", "type": "boolean",
+     "definition": "true only if the bidder itself states that it holds an Ontario electrical contractor licence. false if the proposal says the electrical work will be done by a subcontractor or other third party, or that the licence is pending or will be obtained. null if licensing is not mentioned."},
+    {"key": "licence_number", "type": "string",
+     "definition": "the licence number exactly as written."},
+    {"key": "wsib_clearance", "type": "boolean",
+     "definition": "true if the bidder states it holds WSIB clearance. false if it states it does not. null if not mentioned."},
+    {"key": "liability_insurance_cad", "type": "number",
+     "definition": "the liability insurance amount in CAD as a plain number. null if no amount is stated."},
+    {"key": "installs_count", "type": "number",
+     "definition": "the number of completed commercial installations the proposal states."},
+    {"key": "installs_min_size_kw", "type": "number",
+     "definition": "the smallest system size, in kW, that the proposal says those installations cover."},
+    {"key": "installs_since_year", "type": "number",
+     "definition": "the earliest year the proposal states for those installations (for example from 'since 2021'). null if no year is stated."},
+    {"key": "price_cad", "type": "number",
+     "definition": "the total price in CAD. If several prices appear, use the total all-in price. If no single total is stated, null."},
+    {"key": "completion_time", "type": "duration",
+     "definition": "time from award to completion. unit is \"weeks\", \"days\" or \"months\"."},
+    {"key": "panel_warranty_years", "type": "number",
+     "definition": "the panel or equipment warranty length in years."},
+    {"key": "workmanship_warranty_years", "type": "number",
+     "definition": "the workmanship warranty length in years."},
+    {"key": "project_lead_named", "type": "boolean",
+     "definition": "true if the proposal says a named project lead or manager will run the project. false if it says one will be assigned later. null if not mentioned."},
+    {"key": "crew_size", "type": "number",
+     "definition": "the number of crew members stated."},
+    {"key": "safety_plan", "type": "boolean",
+     "definition": "true if the proposal states that it includes a site safety plan."},
+    {"key": "monitoring_plan", "type": "boolean",
+     "definition": "true if the proposal states that it includes performance monitoring."},
+    {"key": "monitoring_months", "type": "number",
+     "definition": "the monitoring period in months, if stated."}
+  ],
+  "mandatory": [
+    {"id": "licence", "label": "Ontario electrical contractor licence held by the bidder",
+     "field": "licence_held_by_bidder", "test": "is_true"},
+    {"id": "wsib", "label": "WSIB clearance", "field": "wsib_clearance", "test": "is_true"},
+    {"id": "insurance", "label": "$5M liability insurance",
+     "field": "liability_insurance_cad", "test": "min", "value": 5000000}
+  ],
+  "limits": [
+    {"id": "budget", "label": "Budget ceiling", "field": "price_cad", "max": 260000, "unit": "CAD"},
+    {"id": "schedule", "label": "16-week completion limit", "field": "completion_time",
+     "transform": "weeks", "max": 16, "unit": "weeks"}
+  ],
+  "weighted": [
+    {"id": "experience", "label": "Relevant experience", "weight": 30, "kind": "linear",
+     "field": "installs_count", "full": 12, "zero": 0, "missing": "flag",
+     "qualifier": {"min_size_field": "installs_min_size_kw", "min_kw": 100,
+                   "since_field": "installs_since_year", "window_years": 5}},
+    {"id": "price", "label": "Price", "weight": 25, "kind": "linear",
+     "field": "price_cad", "full": 208000, "zero": 260000, "missing": "flag"},
+    {"id": "timeline", "label": "Timeline", "weight": 15, "kind": "linear",
+     "field": "completion_time", "transform": "weeks", "full": 8, "zero": 16, "missing": "flag"},
+    {"id": "warranty", "label": "Warranty", "weight": 15, "kind": "composite", "missing": "zero",
+     "components": [
+       {"field": "panel_warranty_years", "full": 25, "zero": 0, "share": 0.5},
+       {"field": "workmanship_warranty_years", "full": 15, "zero": 0, "share": 0.5}]},
+    {"id": "team", "label": "Team and approach", "weight": 15, "kind": "points",
+     "items": [
+       {"field": "project_lead_named", "points": 4},
+       {"field": "crew_size", "points": 3},
+       {"field": "safety_plan", "points": 4},
+       {"field": "monitoring_plan", "points": 4}]}
+  ]
+}
