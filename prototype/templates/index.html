@@ -51,8 +51,10 @@ details table td,details table th{padding:4px 8px;font-size:.9rem}
 <form id="up">
 <div class="row">
 <div><label for="cat">Category</label><input id="cat" type="text" list="cats" value="Commercial Solar Installation" required><datalist id="cats"></datalist></div>
-<div><label for="files">Proposal PDFs</label><input id="files" type="file" accept="application/pdf" multiple required></div>
+<div><label for="files">Proposal PDFs</label><input id="files" type="file" accept="application/pdf" multiple></div>
 </div>
+<div><label for="proposal-texts">Extracted proposal text (optional if PDFs are not used)</label>
+<textarea id="proposal-texts" style="width: 100%; padding: 20px;" rows="12" placeholder="Paste each proposal here. Separate proposals with a line such as: --- Proposal A --- or === Proposal 1 ==="></textarea></div>
 <div class="actions">
 <button type="submit">Upload</button>
 <button type="button" id="ext" class="alt" disabled>Extract facts</button>
@@ -91,7 +93,11 @@ $("#up").onsubmit = async e => {
   try {
     const fd = new FormData();
     fd.append("category", $("#cat").value);
-    for (const f of $("#files").files) fd.append("files", f);
+    if ($("#files").files.length) {
+      for (const f of $("#files").files) fd.append("files", f);
+    } else if (($('#proposal-texts').value || '').trim()) {
+      fd.append("proposal_texts", $('#proposal-texts').value);
+    }
     say("Uploading…");
     const r = await api("/api/runs", {method: "POST", body: fd});
     runId = r.run_id;

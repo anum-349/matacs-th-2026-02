@@ -22,12 +22,10 @@ import time
 from dataclasses import asdict, dataclass, field
 
 from ingest import normalize
-
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+from dotenv import load_dotenv
+from google.genai import types
+    
+load_dotenv()
 
 LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 MAX_PROMPT_CHARS = 60_000   # longer proposals are flagged, never truncated
@@ -35,7 +33,6 @@ MAX_ATTEMPTS = 2            # one try plus one retry
 RETRY_DELAY_S = 2.0         # pause before the retry (rate limits on free keys)
 MIN_QUOTE_CHARS = 8         # shorter quotes are too weak to count as evidence
 UNITS = ("weeks", "days", "months")
-
 
 class LlmNotConfigured(RuntimeError):
     """The LLM cannot be called at all (for example, no API key)."""
@@ -162,9 +159,9 @@ def gemini_llm(system: str, user: str) -> str:
     )
     if "3.8-flash" in LLM_MODEL:
         # Thinking tokens count against max_output_tokens and can cut the JSON off mid-reply.
-        cfg["thinking_config"] = genai.types.ThinkingConfig(thinking_budget=0)
+        cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
     resp = _client.models.generate_content(
-        model=LLM_MODEL, contents=user, config=genai.types.GenerateContentConfig(**cfg)
+        model=LLM_MODEL, contents=user, config=types.GenerateContentConfig(**cfg)
     )
     return resp.text or ""      # None when the reply was blocked: treated as "no valid JSON"
 

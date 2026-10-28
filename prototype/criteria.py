@@ -17,32 +17,56 @@ class BadConfig(Exception):
     pass
 
 
+def _config_roots() -> tuple[Path, ...]:
+    return (CRITERIA_DIR, Path(__file__).parent)
+
+
 def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
+def _candidate_config_paths(category: str) -> list[Path]:
+    slug = slugify(category or "")
+    names: list[str] = []
+    for candidate in (slug, slug.replace("-", "_"), slug.replace("_", "-")):
+        if candidate and candidate not in names:
+            names.append(candidate)
+    paths: list[Path] = []
+    for root in _config_roots():
+        for name in names:
+            p = root / f"{name}.json"
+            if p not in paths:
+                paths.append(p)
+    return paths
+
+
 def list_categories() -> list[str]:
-    names = []
-    for path in sorted(CRITERIA_DIR.glob("*.json")):
-        try:
-            names.append(json.loads(path.read_text(encoding="utf-8"))["category"])
-        except (OSError, ValueError, KeyError):
-            continue
+    names: list[str] = []
+    seen: set[str] = set()
+    for root in _config_roots():
+        for path in sorted(root.glob("*.json")):
+            try:
+                cfg = json.loads(path.read_text(encoding="utf-8"))
+                category = cfg.get("category")
+            except (OSError, ValueError, TypeError):
+                continue
+            if isinstance(category, str) and category.strip() and category not in seen:
+                names.append(category)
+                seen.add(category)
     return names
 
 
 def load_config(category: str) -> dict:
     """Look a category up by name (case and spacing do not matter) and validate it."""
-    slug = slugify(category or "")
-    path = CRITERIA_DIR / f"{slug}.json"        # slugify leaves only [a-z0-9-], so no path tricks
-    if not slug or not path.is_file():
-        raise UnknownCategory(category)
-    try:
-        cfg = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError as e:
-        raise BadConfig(f"{path.name} is not valid JSON") from e
-    _validate(cfg, path.name)
-    return cfg
+    for path in _candidate_config_paths(category):
+        if path.is_file():
+            try:
+                cfg = json.loads(path.read_text(encoding="utf-8"))
+            except ValueError as e:
+                raise BadConfig(f"{path.name} is not valid JSON") from e
+            _validate(cfg, path.name)
+            return cfg
+    raise UnknownCategory(category)
 
 
 def _validate(cfg: dict, filename: str) -> None:

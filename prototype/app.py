@@ -38,6 +38,83 @@ def _write_json(path: Path, doc) -> None:
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
 
+
+def _split_text_proposals(raw_text: str) -> list[str]:
+    """Split pasted proposal text into one block per proposal.
+
+    A user can paste proposals separated by headings such as:
+    --- Proposal A ---
+    or
+    === Proposal 1 ===
+    If there are no markers, the whole blob is treated as one proposal.
+    """
+    text = (raw_text or "").strip()
+    if not text:
+        return []
+
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        payload = None
+
+    if isinstance(payload, list):
+        items = []
+        for item in payload:
+            if isinstance(item, str) and item.strip():
+                items.append(item.strip())
+        if items:
+            return items
+
+    if isinstance(payload, dict):
+        collections = [payload.get("proposals"), payload.get("items"), payload.get("data")]
+        for candidate in collections:
+            if isinstance(candidate, list):
+                items = [str(item).strip() for item in candidate if isinstance(item, str) and item.strip()]
+                if items:
+                    return items
+
+    patterns = [
+        r"(?im)^\s*(?:[-*_]{3,}\s*)?(?:proposal|bid)\s*[A-Za-z0-9]+\s*(?:[-*_]{3,})?\s*$",
+        r"(?im)^\s*(?:[-*_]{3,}\s*)?===\s*(?:proposal|bid)\s*[A-Za-z0-9]+\s*===\s*(?:[-*_]{3,})?\s*$",
+        r"(?im)^\s*(?:[-*_]{3,}\s*)?---\s*(?:proposal|bid)\s*[A-Za-z0-9]+\s*---\s*(?:[-*_]{3,})?\s*$",
+    ]
+    compiled = [re.compile(p) for p in patterns]
+
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if any(p.fullmatch(line.strip()) for p in compiled):
+            if current:
+                joined = "\n".join(current).strip()
+                if joined:
+                    blocks.append(joined)
+                current = []
+            continue
+        current.append(line)
+
+    if current:
+        joined = "\n".join(current).strip()
+        if joined:
+            blocks.append(joined)
+
+    return blocks or [text]
+
+
+def _text_run_to_ingest_result(run_id: str, proposal_idx: int, text: str):
+    name = f"proposal-{proposal_idx}.txt"
+    data = text.encode("utf-8")
+    digest = hashlib.sha256(data).hexdigest()
+    res = IngestResult(
+        filename=name,
+        sha256=digest,
+        size_bytes=len(data),
+        status="ok",
+        reason=None,
+        page_count=1,
+        pages=[text],
+    )
+    return res
+
 _RUN_ID_RE = re.compile(r"[0-9a-f]{12}")
 
 def _run_dir_or_error(run_id):
@@ -53,6 +130,7 @@ def _run_dir_or_error(run_id):
 def create_run():
     category = (request.form.get("category") or "").strip()
     files = [f for f in request.files.getlist("files") if f and f.filename]
+    raw_text = (request.form.get("proposal_texts") or "").strip()
 
     if not category:
         return jsonify(error='"Category" is required.'), 400
@@ -64,10 +142,12 @@ def create_run():
     except BadConfig as e:
         return jsonify(error=f"Criteria config problem: {e}"), 500
 
-    if not files:
-        return jsonify(error="At least one pdf file in the files."), 400
+    proposal_blocks = _split_text_proposals(raw_text)
+    if not files and not proposal_blocks:
+        return jsonify(error="At least one PDF file or extracted proposal text block is required."), 400
 
-    if len(files) > MAX_FILES:
+    total_input_count = len(files) + len(proposal_blocks)
+    if total_input_count > MAX_FILES:
         return jsonify(error=f"At most {MAX_FILES} files per run allowed."), 400
 
     run_id = uuid.uuid4().hex[:12]
@@ -78,7 +158,6 @@ def create_run():
     first_seen: dict[str, str] = {}
     proposals = []
     records = []
-
     for i, f in enumerate(files, start=1):
         proposal_id  = f"PROP{i:02d}"
         data = f.read()
@@ -101,6 +180,27 @@ def create_run():
 
         _audit({"event": "file_ingested", "run_id": run_id, **summary})
 
+    for i, block in enumerate(proposal_blocks, start=1):
+        proposal_index = len(files) + i
+        proposal_id = f"PROP{proposal_index:02d}"
+        res = _text_run_to_ingest_result(run_id, proposal_index, block)
+        digest = res.sha256
+
+        if digest in first_seen:
+            res = IngestResult(
+                filename=res.filename, sha256=digest, size_bytes=len(block.encode("utf-8")),
+                reason=f"Duplicate of {first_seen[digest]}.",
+            )
+        else:
+            first_seen[digest] = proposal_id
+            (run_dir / "files" / f"{digest}.bin").write_text(block, encoding="utf-8")
+
+        summary = {"proposal_id": proposal_id, **res.summary()}
+        proposals.append(summary)
+        records.append({**summary, "pages": res.pages})
+
+        _audit({"event": "file_ingested", "run_id": run_id, **summary})
+
     _write_json(run_dir / "ingest.json", {
         "run_id": run_id,
         "category": category,
@@ -109,7 +209,7 @@ def create_run():
     })
 
     _audit({"event": "run_created", "run_id": run_id, "category": cfg["category"],
-            "config_version": cfg["version"], "files": len(files)})
+            "config_version": cfg["version"], "files": total_input_count})
 
     total_ok = sum(1 for p in proposals if p["status"] == "ok")
 
